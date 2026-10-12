@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 );
 CREATE INDEX IF NOT EXISTS idx_tool_calls_ts   ON tool_calls(ts);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_name ON tool_calls(tool_name);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_session_turn ON tool_calls(session_id, turn_id);
 
 CREATE TABLE IF NOT EXISTS compactions (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,6 +100,7 @@ CREATE TABLE IF NOT EXISTS compactions (
     model      TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_compactions_ts ON compactions(ts);
+CREATE INDEX IF NOT EXISTS idx_compactions_session ON compactions(session_id, ts);
 """
 
 
@@ -250,7 +252,8 @@ class AuditDB:
             return int(cur.lastrowid or 0)
 
     def confirm_tool_call(self, tool_name: str, session_id: str = "", tool_call_id: str = "",
-                          result_bytes: int = 0, duration_ms=None, status: str = "") -> int:
+                          result_bytes: int = 0, duration_ms=None, status: str = "",
+                          turn_id: str = "") -> int:
         """Attach the result size to the matching pre_tool_call row.
 
         Exact ``tool_call_id`` match first; otherwise the OLDEST still-unresolved
@@ -270,10 +273,21 @@ class AuditDB:
                     " ORDER BY id LIMIT 1", (tool_call_id,)
                 ).fetchone()
             if row is None:
-                row = self._conn.execute(
-                    "SELECT id FROM tool_calls WHERE resolved=0 AND tool_name=? AND session_id=?"
-                    " ORDER BY id LIMIT 1", (tool_name or "", session_id or "")
-                ).fetchone()
+                # FIFO fallback. When the caller supplied a turn_id, prefer the
+                # oldest unresolved row in that turn (tighter match); fall back
+                # to the session-wide FIFO so torn-down turns still resolve.
+                if turn_id:
+                    row = self._conn.execute(
+                        "SELECT id FROM tool_calls WHERE resolved=0 AND tool_name=?"
+                        " AND session_id=? AND turn_id=?"
+                        " ORDER BY id LIMIT 1",
+                        (tool_name or "", session_id or "", turn_id or ""),
+                    ).fetchone()
+                if row is None:
+                    row = self._conn.execute(
+                        "SELECT id FROM tool_calls WHERE resolved=0 AND tool_name=? AND session_id=?"
+                        " ORDER BY id LIMIT 1", (tool_name or "", session_id or "")
+                    ).fetchone()
             if row is None:
                 cur = self._conn.execute(
                     "INSERT INTO tool_calls (ts, tool_call_id, session_id, tool_name,"
@@ -418,10 +432,16 @@ _DB: AuditDB | None = None
 
 
 def get_db() -> AuditDB:
-    """Lazy singleton; recreated when ``DB_PATH`` changes (tests, profile switch)."""
+    """Lazy singleton; recreated when the effective DB path changes.
+
+    The path is resolved lazily at call time so a ``HERMES_HOME`` change after
+    import (tests, profile switch) is picked up instead of freezing the path
+    computed at module import.
+    """
     global _DB
-    if _DB is None or _DB.path != DB_PATH:
-        _DB = AuditDB(DB_PATH)
+    path = DB_PATH if DB_PATH != _default_db_path() else _default_db_path()
+    if _DB is None or _DB.path != path:
+        _DB = AuditDB(path)
     return _DB
 
 
@@ -578,7 +598,8 @@ def on_post_tool_call(tool_name: str = "", args=None, result=None, session_id: s
     """Attach the result *size* (never its content) to the existing row."""
     size = len(result) if isinstance(result, str) else _payload_bytes(result)
     get_db().confirm_tool_call(tool_name, session_id=session_id, tool_call_id=tool_call_id,
-                               result_bytes=size, duration_ms=duration_ms, status=status)
+                               result_bytes=size, duration_ms=duration_ms, status=status,
+                               turn_id=turn_id)
 
 
 @_observer
