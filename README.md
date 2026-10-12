@@ -37,7 +37,10 @@ discover it, fires the hooks through `invoke_hook` and reads back the DB — pro
 discovery, dispatch and path resolution, which the unit suite cannot. It skips
 (exit 0) when the Hermes source tree is not importable.
 
-Restart the gateway (or start a new session) so the hooks attach.
+`hermes plugins enable context-audit` activates the hooks in a **running** gateway
+immediately — it only reports `restart_required` when no gateway answered. No restart
+needed. Hooks see turns that *start* after activation: a turn already in flight gets no
+`pre_llm_call`, so its `turns` row appears only when that turn finishes.
 
 ## Use
 
@@ -120,9 +123,14 @@ inserting sentinel strings and grepping the resulting DB file for them.
 ## Uninstall
 
 ```bash
-hermes plugins disable context-audit    # hooks detach immediately
+hermes plugins disable context-audit    # config-only: a RUNNING gateway keeps the hooks wired until restart
 rm -rf ~/.hermes/plugins/context-audit ~/.hermes/plugin-data/context-audit
 ```
+
+Disabling writes config; there is no un-wire primitive, so an already-running gateway
+keeps calling these hooks (and writing to the DB) until it restarts. To stop the
+auditing *now*, delete `~/.hermes/plugin-data/context-audit/` after the gateway
+restarts — not before.
 
 ## License
 
