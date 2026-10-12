@@ -81,6 +81,20 @@ mod.on_post_tool_call(tool_name="write_file", result="ok", session_id="s2", tool
 first, second = q("SELECT resolved FROM tool_calls WHERE tool_name='write_file' ORDER BY id")
 check("second post takes the next row", first[0] == 1 and second[0] == 1, (first, second))
 
+# -- FIFO fallback prefers the same turn when turn_id is supplied
+mod.on_pre_tool_call(tool_name="terminal", args={"cmd": "t1"}, session_id="s4", turn_id="turnA", tool_call_id="")
+time.sleep(0.001)
+mod.on_pre_tool_call(tool_name="terminal", args={"cmd": "t2"}, session_id="s4", turn_id="turnB", tool_call_id="")
+mod.on_post_tool_call(tool_name="terminal", result="ok", session_id="s4", turn_id="turnB", tool_call_id="call_Z")
+row = q("SELECT turn_id, resolved FROM tool_calls WHERE tool_name='terminal' AND session_id='s4' ORDER BY id")
+check("turn-scoped fallback confirms the matching turn's row",
+      row[0][1] == 0 and row[1][1] == 1 and row[1][0] == "turnB", row)
+
+# -- performance indexes exist
+idx = [r[0] for r in q("SELECT name FROM sqlite_master WHERE type='index'")]
+check("session/turn index on tool_calls", "idx_tool_calls_session_turn" in idx, idx)
+check("session index on compactions", "idx_compactions_session" in idx, idx)
+
 # -- post without any pre is still recorded (never crashes, never strands)
 before = q("SELECT COUNT(*) FROM tool_calls")[0][0]
 mod.on_post_tool_call(tool_name="cronjob", result="done", session_id="s3", tool_call_id="call_orphan")
