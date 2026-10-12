@@ -28,7 +28,7 @@ Verify the contracts against your Hermes version before trusting it with anythin
 ```bash
 hermes plugins validate ~/.hermes/plugins/context-audit   # catalog admission gate
 hermes plugins doctor   ~/.hermes/plugins/context-audit   # real runtime contracts
-python3 ~/.hermes/plugins/context-audit/selftest.py       # 47 checks, in-memory SQLite, no gateway
+python3 ~/.hermes/plugins/context-audit/selftest.py       # 50 checks, in-memory SQLite, no gateway
 python3 ~/.hermes/plugins/context-audit/test_integration.py  # real discovery + dispatch, throwaway profile
 ```
 
@@ -135,3 +135,10 @@ restarts — not before.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Catalog sha guard
+
+`catalog/context-audit.yaml` pins the commit the plugin content lives at.
+Run `python3 scripts/check_catalog_sha.py` (CI-friendly) to fail loudly when
+source has moved without a re-pin. The pin may trail the catalog-update commit
+itself by one — that is expected; what it guards is *source* drift.
