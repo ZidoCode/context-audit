@@ -1,5 +1,7 @@
 # context-audit
 
+[![Official Hermes plugin](https://img.shields.io/badge/Official_Hermes_plugin-catalog-7c3aed)](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/context-audit.yaml)
+
 Context-window forensics for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 
 Agent sessions get fat and nobody can say why. Tool outputs are enormous, compaction
