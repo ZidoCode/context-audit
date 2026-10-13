@@ -1,5 +1,5 @@
 name: context-audit
-version: "0.1.0"
+version: "0.1.1"
 description: Context-window forensics for Hermes Agent — per-turn token estimates, the single largest tool output of each turn, oversized tool calls, and compaction events, recorded as metadata only in a local SQLite audit DB. Observer-only, stdlib-only, fails open.
 provides_hooks:
   - pre_tool_call
